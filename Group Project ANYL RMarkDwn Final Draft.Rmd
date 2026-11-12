@@ -1,0 +1,183 @@
+---
+title: "Final Group Project"
+output: word_document
+date: "2026-05-07"
+---
+
+```{r}
+# Load the data
+library(tidyverse)
+library(nflreadr)
+
+# 1. Load 2023 Regular Season Stats
+team_yards_2023 <- load_player_stats(2023) %>%
+  filter(season_type == "REG") %>%
+  group_by(team) %>%
+  summarize(
+    total_pass_yards = sum(passing_yards, na.rm = TRUE),
+    total_rush_yards = sum(rushing_yards, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 2. Official 2023 Standings for all 32 teams
+official_2023_all <- data.frame(
+  team = c("BAL", "BUF", "KC", "HOU", "CLE", "MIA", "PIT", "JAX", "IND", "LV", 
+           "DEN", "CIN", "NYJ", "TEN", "LAC", "NE", "DAL", "DET", "SF", "PHI", 
+           "LAR", "TB", "GB", "NO", "SEA", "MIN", "CHI", "ATL", "NYG", "WAS", 
+           "ARI", "CAR"),
+  W = c(13, 11, 11, 10, 11, 11, 10, 9, 9, 8, 8, 9, 7, 6, 5, 4, 
+        12, 12, 12, 11, 10, 9, 9, 9, 9, 7, 7, 7, 6, 4, 4, 2),
+  L = c(4, 6, 6, 7, 6, 6, 7, 8, 8, 9, 9, 8, 10, 11, 12, 13, 
+        5, 5, 5, 6, 7, 8, 8, 8, 8, 10, 10, 10, 11, 13, 13, 15),
+  T = rep(0, 32) # No ties occurred in the 2023 regular season
+) %>%
+  mutate(Win_Pct = (W + 0.5 * T) / (W + L + T))
+
+# 3. Final Join
+final_data_2023 <- team_yards_2023 %>%
+  inner_join(official_2023_all, by = "team")
+
+# Hypothesis testing 
+model_2023 <- lm(Win_Pct ~ total_pass_yards + total_rush_yards, data = final_data_2023)
+summary(model_2023)
+
+# Simple Scatterplot for Passing 
+plot(final_data_2023$total_pass_yards, final_data_2023$Win_Pct,
+     main = "Passing Yards vs. Win Percentage",
+     xlab = "Total Passing Yards",
+     ylab = "Winning Percentage",
+     pch = 19, col = "blue")
+model_pass <- lm(Win_Pct ~ total_pass_yards, data = final_data_2023)
+abline(model_pass, col = "red", lwd = 2)
+
+# Simple Scatterplot for Rushing
+plot(final_data_2023$total_rush_yards, final_data_2023$Win_Pct,
+     main = "Rushing Yards vs. Win Percentage",
+     xlab = "Total Rushing Yards",
+     ylab = "Winning Percentage",
+     pch = 19, col = "darkorange")
+model_rush <- lm(Win_Pct ~ total_rush_yards, data = final_data_2023)
+abline(model_rush, col = "red", lwd = 2)
+
+
+pairs(final_data_2023[, c("Win_Pct", "total_pass_yards", "total_rush_yards")],
+      main = "Scatterplot Matrix of Team Data")
+
+# Create 'High' vs 'Low' groups based on the Median 
+final_data_2023$pass_group <- ifelse(final_data_2023$total_pass_yards > median(final_data_2023$total_pass_yards), "High Passing", "Low Passing")
+final_data_2023$rush_group <- ifelse(final_data_2023$total_rush_yards > median(final_data_2023$total_rush_yards), "High Rushing", "Low Rushing")
+
+# Boxplot: Win % by Passing Group
+boxplot(Win_Pct ~ pass_group, data = final_data_2023,
+        main = "Win % by Passing Performance",
+        xlab = "Passing Volume", ylab = "Win %",
+        col = c("blue", "lightblue"))
+
+# Boxplot: Win % by Rushing Group
+boxplot(Win_Pct ~ rush_group, data = final_data_2023,
+        main = "Win % by Rushing Performance",
+        xlab = "Rushing Volume", ylab = "Win %",
+        col = c("orange", "wheat"))
+
+# T-test for Passing Groups
+pass_ttest <- t.test(Win_Pct ~ pass_group, data = final_data_2023)
+print("--- T-Test: High vs Low Passing ---")
+print(pass_ttest)
+
+# T-test for Rushing Groups
+rush_ttest <- t.test(Win_Pct ~ rush_group, data = final_data_2023)
+print("--- T-Test: High vs Low Rushing ---")
+print(rush_ttest)
+
+# Add playoff teams for ANOVA 
+playoff_teams <- c("BAL", "BUF", "KC", "HOU", "CLE", "MIA", "PIT", 
+                   "DAL", "DET", "SF", "PHI", "LAR", "TB", "GB")
+
+final_data_2023 <- final_data_2023 %>%
+  mutate(is_playoff = ifelse(team %in% playoff_teams, "Playoff", "Non-Playoff"))
+
+inal_data_2023 <- final_data_2023 %>%
+  mutate(is_playoff = ifelse(team %in% playoff_teams, "Playoff", "Non-Playoff"))
+
+# Two-Way ANOVA: Passing Group and Playoff Status 
+# Two-Way ANOVA: Passing Group and Playoff Status
+anova_interaction <- aov(Win_Pct ~ pass_group * is_playoff, data = final_data_2023)
+summary(anova_interaction)
+
+# Two-Way ANOVA for Passing & Playoff Status
+anova_pass_playoff <- aov(Win_Pct ~ pass_group * is_playoff, data = final_data_2023)
+print("--- ANOVA: Passing vs Playoff Status ---")
+summary(anova_pass_playoff)
+
+# Calculate the means for the passing groups
+pass_means <- tapply(final_data_2023$Win_Pct, final_data_2023$pass_group, mean)
+
+# Create the Barplot
+barplot(pass_means, 
+        main = "Mean Win % by Passing Volume",
+        ylab = "Average Win Percentage",
+        col = c("lightblue", "royalblue"),
+        ylim = c(0, 0.8)) # Sets the y-axis to show 0% to 80%
+
+#. Two-Way ANOVA for Rushing & Playoff Status
+anova_rush_playoff <- aov(Win_Pct ~ rush_group * is_playoff, data = final_data_2023)
+print("--- ANOVA: Rushing vs Playoff Status ---")
+summary(anova_rush_playoff)
+
+# Calculate the means for the rushing groups
+rush_means <- tapply(final_data_2023$Win_Pct, final_data_2023$rush_group, mean)
+
+# Create the Barplot
+barplot(rush_means, 
+        main = "Mean Win % by Rushing Volume",
+        ylab = "Average Win Percentage",
+        col = c("darkorange", "wheat"),
+        ylim = c(0, 0.8))
+
+# Histogram for Win Percentage 
+hist(final_data_2023$Win_Pct, 
+     breaks = 8, 
+     col = "gray90", 
+     border = "black",
+     main = "Distribution of NFL Win Percentages (2023)",
+     xlab = "Win Percentage",
+     ylab = "Number of Teams")
+
+# Add a vertical line for the mean
+abline(v = mean(final_data_2023$Win_Pct), col = "red", lwd = 2, lty = 2)
+
+# ScatterPlot for Win Percentage
+
+# This creates a scale from 'lightblue' (Low Win %) to 'darkblue' (High Win %)
+color_function <- colorRampPalette(c('lightblue', 'darkblue'))
+final_data_2023$color_idx <- color_function(10)[as.numeric(cut(final_data_2023$Win_Pct, breaks = 10))]
+# Generate the Scatterplot
+plot(final_data_2023$total_pass_yards, final_data_2023$total_rush_yards,
+     pch = 19, # Solid circles
+     col = final_data_2023$color_idx,
+     main = "2023 NFL: Passing vs. Rushing Yardage",
+     xlab = "Total Passing Yards",
+     ylab = "Total Rushing Yards",
+     cex = 1.5) # Makes the dots slightly larger
+
+# Add Team Labels
+text(final_data_2023$total_pass_yards, final_data_2023$total_rush_yards, 
+     labels = final_data_2023$team, 
+     pos = 3, # Positions text above the point
+     cex = 0.7)
+
+# Add a Legend
+legend("topright", 
+       legend = c("High Win %", "Low Win %"), 
+       fill = c("darkblue", "lightblue"), 
+       cex = 0.8, 
+       title = "Success Level")
+
+
+# This creates four quadrants (High/High, Low/Low, etc.) matching your ANOVA groups
+abline(v = median(final_data_2023$total_pass_yards), col = "gray", lty = 2)
+abline(h = median(final_data_2023$total_rush_yards), col = "gray", lty = 2)
+```
+
+
+
